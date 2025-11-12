@@ -37,12 +37,16 @@ rec.onclick=async()=>{
     const {text}=await sttRes.json();
     log.textContent=text||"(no speech detected)";
 
-    const ttsRes=await fetch("/tts",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text:text?("You said: "+text):"I didn't catch that."})});
-    const ttsBlob=await ttsRes.blob();
-    player.src=URL.createObjectURL(ttsBlob);
-    player.play().catch(()=>{});
+    // const ttsRes=await fetch("/tts",{method:"POST",
+    //   headers:{"Content-Type":"application/json"},
+    //   body:JSON.stringify({text:text?("You said: "+text):"I didn't catch that."})});
+    // const ttsBlob=await ttsRes.blob();
+    // player.src=URL.createObjectURL(ttsBlob);
+    // player.play().catch(()=>{});\
+
+    const ttsRes=await fetch("/ktts",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:text?("You said: "+text):"I didn't catch that."})});
   };
   recorder.start();
   rec.disabled=true; stopBtn.disabled=false;

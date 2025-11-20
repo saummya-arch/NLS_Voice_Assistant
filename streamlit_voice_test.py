@@ -45,7 +45,7 @@ processor, model = load_asr()
 tts_model = load_tts()
 duration = 5
 sample_rate = 16000
-api_key = "c0f2416e24788ab7141355f8b7f97e45"
+api_key = ""
 keywords = ['current', 'today', 'now', 'tomorrow', 'yesterday']
 nlp = spacy.load("en_core_web_sm")
 

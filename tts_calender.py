@@ -110,8 +110,9 @@ def voice_assistant():
                 print('fetched', response)
                 if response:
                     for entry in response:
-                        st.write(
+                        tts_model.speak(
                             f'Title: {entry["title"]} Description: {entry["description"]} Time: {entry["start_time"]}')
+                        response = 'Those are all the meetings'
                 else:
                     response = 'Failed to set meeting'
             elif calender.intent == 'update_data':
@@ -132,7 +133,7 @@ def voice_assistant():
         start_time = time.time()
 
         # tts the response
-        audio = tts_model.speak(text)
+        audio = tts_model.speak(response)
         print('Total tts infer time:', time.time() - start_time)
 
         # rerun record

@@ -2,9 +2,13 @@
 
 set DISTIL_MODEL=distil-whisper/distil-medium.en
 
-# Command to run the Python Fast API Serve :
+# Command to run streamlit :
 
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+streamlit run .\tts_calender.py
+
+# Ollama setup - please check the link for instructions
+
+https://github.com/ollama/ollama
 
 # to run in docker use these commands:
 

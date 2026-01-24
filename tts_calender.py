@@ -21,7 +21,7 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 # ASR model
 @st.cache_resource
 def load_asr():
-    model_name = "distil-whisper/distil-small.en"
+    model_name = "distil-whisper/distil-medium.en"
     processor = AutoProcessor.from_pretrained(model_name)
     model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name).to("cpu")
     model.eval()

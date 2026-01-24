@@ -1,10 +1,12 @@
+from datetime import datetime
+
 import streamlit as st
 import sounddevice as sd
 import numpy as np
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 import torch
 
-from va_llm import LLM
+from va_llm import ExtractorLLM, ReplyLLM
 from tts import TTS
 
 import requests
@@ -34,20 +36,28 @@ def load_tts():
 
 
 @st.cache_resource
-def load_llm():
-    llm_model = LLM()
+def load_extractor_llm():
+    llm_model = ExtractorLLM()
+    return llm_model
+
+@st.cache_resource
+def load_reply_llm():
+    llm_model = ReplyLLM()
     return llm_model
 
 
 # Parameters
 processor, model = load_asr()
 tts_model = load_tts()
-llm_model = load_llm()
+extractor_llm_model = load_extractor_llm()
+reply_llm_model = load_reply_llm()
 duration = 15
 sample_rate = 16000
 api_key = ""
-keywords = ['current', 'today', 'now', 'tomorrow', 'yesterday']
-nlp = spacy.load("en_core_web_sm")
+
+# URL
+weather_url = "https://api.responsible-nlp.net/weather.php"
+calender_url = "https://api.responsible-nlp.net/calendar.php"
 
 
 def record_audio(seconds=duration, sr=sample_rate):
@@ -67,23 +77,8 @@ def predict_audio(audio, sr=sample_rate):
     return res
 
 
-def get_keywords(text):
-    d = {}
-    d['city'] = ""
-    d['time'] = ""
-    doc = nlp(text=text)
-    for ent in doc.ents:
-        if ent.label_ == "GPE":
-            print(ent.text)
-            d["city"] = ent.text
-    for token in doc:
-        if token.text in keywords:
-            # print(token)
-            d['time'] = token.text
-    return d
-
-
 # duration = st.slider("Recording Duration (seconds)", 1, 10, 3)
+
 
 def voice_assistant():
     if st.button("Record Audio"):
@@ -97,14 +92,13 @@ def voice_assistant():
         st.text(text)
 
         # LLM testing
-        result = llm_model.chat(text)
+        result = extractor_llm_model.chat(text)
         print(result)
 
         if result.intent == 'calender':
+            calender_param = {"calenderid": "uid23"}
             response = 'Failed to process calender request'
             calender = result.calender
-            calender_url = "https://api.responsible-nlp.net/calendar.php"
-            calender_param = {"calenderid": "uid23"}
             if calender.intent == 'fetch_data':
                 response = requests.get(calender_url, params=calender_param).json()
                 print('fetched', response)
@@ -129,6 +123,24 @@ def voice_assistant():
                 else:
                     response = 'Failed to set meeting'
             print(response)
+        elif result.intent == 'weather':
+            weather = result.weather
+            city = weather.city if weather.city else "Marburg"
+            response = requests.post(weather_url, data={'place': city}).json()
+            print(response)
+            weekday = weather.day if weather.day else datetime.now()
+            dt = datetime.strptime(weekday, "%Y-%m-%d")
+
+            wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            weekday = wd[dt.weekday()]
+            res = next(forecast for forecast in response['forecast'] if forecast['day']==weekday)
+            temp = res['temperature']
+            weather_desc = res['weather']
+
+            response = reply_llm_model.chat(text, {'city': city, 'temp': temp, 'weather': weather_desc})
+            response = response.answer
+            print(response)
+            # response = f"The current temperature is minimum {temp['min']}°celsius and maximum {temp['max']}°celsius in {weather.city}, And it's going to be {weather_desc} today"
 
         start_time = time.time()
 
@@ -139,5 +151,9 @@ def voice_assistant():
         # rerun record
         st.rerun()
 
+try:
+    voice_assistant()
+except Exception as e:
+    print(e)
+    st.rerun()
 
-voice_assistant()

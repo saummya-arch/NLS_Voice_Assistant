@@ -10,9 +10,9 @@ from va_llm import ExtractorLLM, ReplyLLM
 from tts import TTS
 
 import requests
-import spacy
-
 import time
+
+from chat_history import ChatHistory
 
 st.title("Voice Assistant(Testing)")
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -46,6 +46,9 @@ def load_reply_llm():
     return llm_model
 
 
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = ChatHistory()
+
 # Parameters
 processor, model = load_asr()
 tts_model = load_tts()
@@ -53,20 +56,43 @@ extractor_llm_model = load_extractor_llm()
 reply_llm_model = load_reply_llm()
 duration = 15
 sample_rate = 16000
-api_key = ""
 
 # URL
 weather_url = "https://api.responsible-nlp.net/weather.php"
 calender_url = "https://api.responsible-nlp.net/calendar.php"
 
 
-def record_audio(seconds=duration, sr=sample_rate):
+def record_audio(sr=sample_rate, silence_limit=3.0, threshold=0.02, min_duration=3.0):
     st.write("Recording...")
-    audio = sd.rec(int(seconds * sr), samplerate=sr, channels=1, dtype="float32")
-    # audio = sd.rec(samplerate=sr, channels=1, dtype="float32")
-    sd.wait()
+    recorded_chunks = []
+    silent_chunks = 0
+    total_chunks = 0
+
+    #chunk parameters
+    chunk_size = 1024
+    limit_in_chunks = int(silence_limit * sr / chunk_size)
+    min_chunks = int(min_duration * sr / chunk_size)
+
+    def callback(indata, frames, time, status):
+        nonlocal silent_chunks, total_chunks
+        total_chunks += 1
+        
+        volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata)) #RMS calculation-eucli norm
+        recorded_chunks.append(indata.copy())
+        
+        #check only after min duration
+        if total_chunks > min_chunks:
+            if volume_norm < threshold: #chunk is silent
+                silent_chunks += 1
+            else:
+                silent_chunks = 0  # not silent
+    print("sr:",sr)
+    with sd.InputStream(samplerate=sr, channels=1, callback=callback, blocksize=chunk_size):
+        while silent_chunks < limit_in_chunks:
+            sd.sleep(100)  # Check status every 100ms
+
     st.write("Recording over...")
-    return audio.flatten()
+    return np.concatenate(recorded_chunks).flatten()
 
 
 def predict_audio(audio, sr=sample_rate):
@@ -77,14 +103,79 @@ def predict_audio(audio, sr=sample_rate):
     return res
 
 
-# duration = st.slider("Recording Duration (seconds)", 1, 10, 3)
+def weather_process(text, result):
+    #handle weather
+    weather = result.weather
+    city = weather.city if weather.city else "Marburg"
 
+    try:
+        response = requests.post(weather_url, data={'place': city}).json()
+        print(response)
+        weekday = weather.day if weather.day else datetime.now()
+        dt = datetime.strptime(weekday, "%Y-%m-%d")
+
+        wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        weekday = wd[dt.weekday()]
+        res = next(forecast for forecast in response['forecast'] if forecast['day']==weekday)
+        temp = res['temperature']
+        weather_desc = res['weather']
+
+        response = reply_llm_model.chat(text, {'city': city, 'temp': temp, 'weather': weather_desc})
+        print("weather response",response)
+        if response.answer:
+            response_fin = response.answer.replace("**", "")
+
+        return response_fin, {'city': weather.city}
+    
+    except Exception as e:
+        print(e)
+        return 'Error on accesing weather information.'
+    
+def calender_process(text, result):
+    calender_param = {"calenderid": "uid23"}
+    response = 'Failed to process calender request'
+    calender = result.calender
+    if calender.intent == 'fetch_data':
+        response = requests.get(calender_url, params=calender_param).json()
+        print('fetched:', response)
+        if response:
+            for entry in response:
+                tts_model.speak(
+                    f'Title: {entry["title"]} Description: {entry["description"]} Time: {entry["start_time"]}')
+                response = 'Those are all the meetings'
+        else:
+            response = 'Failed to set meeting'
+    elif calender.intent == 'update_data':
+        meeting_data = {
+            "title": calender.title,
+            "description": calender.description,
+            "start_time": calender.start_time,
+            "end_time": calender.end_time,
+            "location": calender.location,
+        }
+        response = requests.post(calender_url, params=calender_param, json=meeting_data)
+        if response[0] == 200:
+            response = 'Meeting set'
+        else:
+            response = 'Failed to set meeting'
+    print("calender response:",response)
+    return response, {}
 
 def voice_assistant():
+
+    chat_history = st.session_state.chat_history
+
+    if chat_history.chats:
+        st.subheader("Chat history")
+        for chat in chat_history.chats[-4:]:
+            st.text(f"You:{chat.usr_request}")
+            st.text(f"Bot:{chat.chat_response}")
+            st.divider()
+
     if st.button("Record Audio"):
 
         # record audio
-        audio = record_audio(duration)
+        audio = record_audio()
         with st.spinner("Transcribing!!"):
             text = predict_audio(audio)
 
@@ -93,55 +184,19 @@ def voice_assistant():
 
         # LLM testing
         result = extractor_llm_model.chat(text)
-        print(result)
+        print("LLm response:",result)
 
         if result.intent == 'calender':
-            calender_param = {"calenderid": "uid23"}
-            response = 'Failed to process calender request'
-            calender = result.calender
-            if calender.intent == 'fetch_data':
-                response = requests.get(calender_url, params=calender_param).json()
-                print('fetched', response)
-                if response:
-                    for entry in response:
-                        tts_model.speak(
-                            f'Title: {entry["title"]} Description: {entry["description"]} Time: {entry["start_time"]}')
-                        response = 'Those are all the meetings'
-                else:
-                    response = 'Failed to set meeting'
-            elif calender.intent == 'update_data':
-                meeting_data = {
-                    "title": calender.title,
-                    "description": calender.description,
-                    "start_time": calender.start_time,
-                    "end_time": calender.end_time,
-                    "location": calender.location,
-                }
-                response = requests.post(calender_url, params=calender_param, json=meeting_data)
-                if response[0] == 200:
-                    response = 'Meeting set'
-                else:
-                    response = 'Failed to set meeting'
-            print(response)
+            response, entries = calender_process(text, result)
         elif result.intent == 'weather':
-            weather = result.weather
-            city = weather.city if weather.city else "Marburg"
-            response = requests.post(weather_url, data={'place': city}).json()
-            print(response)
-            weekday = weather.day if weather.day else datetime.now()
-            dt = datetime.strptime(weekday, "%Y-%m-%d")
+            response, entries = weather_process(text, result)
 
-            wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-            weekday = wd[dt.weekday()]
-            res = next(forecast for forecast in response['forecast'] if forecast['day']==weekday)
-            temp = res['temperature']
-            weather_desc = res['weather']
-
-            response = reply_llm_model.chat(text, {'city': city, 'temp': temp, 'weather': weather_desc})
-            response = response.answer
-            print(response)
-            # response = f"The current temperature is minimum {temp['min']}°celsius and maximum {temp['max']}°celsius in {weather.city}, And it's going to be {weather_desc} today"
-
+        chat_history.add(
+            usr_request=text,
+            chat_response=response,
+            intent=result.intent,
+            entries=entries,
+        )
         start_time = time.time()
 
         # tts the response
@@ -149,6 +204,10 @@ def voice_assistant():
         print('Total tts infer time:', time.time() - start_time)
 
         # rerun record
+        st.rerun()
+    
+    if st.button("Clear History"):
+        chat_history.clear()
         st.rerun()
 
 try:

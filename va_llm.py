@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class Calender(BaseModel):
-    create_data: bool
+    create_new_entry: bool
     start_time: str | None
     end_time: str | None
     title: str | None
@@ -51,7 +51,7 @@ class ExtractorLLM:
 
 
 class ModifyCalender(BaseModel):
-    request: Literal['get', 'put', 'delete']
+    request: Literal['get', 'put', 'delete', 'post']
     ids: list[int]
     calender: Calender
 

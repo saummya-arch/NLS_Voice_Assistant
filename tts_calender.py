@@ -6,7 +6,7 @@ import numpy as np
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 import torch
 
-from va_llm import ExtractorLLM, ReplyLLM
+from va_llm import ExtractorLLM, ModifyCalenderLLM, ReplyLLM
 from tts import TTS
 
 import requests
@@ -41,6 +41,11 @@ def load_extractor_llm():
     return llm_model
 
 @st.cache_resource
+def load_modify_llm():
+    llm_model = ModifyCalenderLLM()
+    return llm_model
+
+@st.cache_resource
 def load_reply_llm():
     llm_model = ReplyLLM()
     return llm_model
@@ -53,6 +58,7 @@ if 'chat_history' not in st.session_state:
 processor, model = load_asr()
 tts_model = load_tts()
 extractor_llm_model = load_extractor_llm()
+modify_calender_llm_model = load_modify_llm()
 reply_llm_model = load_reply_llm()
 duration = 15
 sample_rate = 16000
@@ -133,19 +139,22 @@ def weather_process(text, result):
     
 def calender_process(text, result):
     calender_param = {"calenderid": "uid23"}
-    response = 'Failed to process calender request'
+    entries = requests.get(calender_url, params=calender_param).json()
+    print(entries)
+    response = 'Failed to process calender request, please try again.'
     calender = result.calender
-    if calender.intent == 'fetch_data':
-        response = requests.get(calender_url, params=calender_param).json()
-        print('fetched:', response)
+    if not calender.create_data:
+        response = modify_calender_llm_model.chat(text, entries)
+        print('llm output for modification:', response)
         if response:
-            for entry in response:
-                tts_model.speak(
-                    f'Title: {entry["title"]} Description: {entry["description"]} Time: {entry["start_time"]}')
-                response = 'Those are all the meetings'
+            if response.request == 'get':
+                print('in get', ids:= response.ids)
+                for entry in entries:
+                    if entry['id'] in ids:
+                        response = f'Event is {entry["title"]} for {entry["description"]}. '
         else:
-            response = 'Failed to set meeting'
-    elif calender.intent == 'update_data':
+            response = 'Failed to process calender request, please try again.'
+    elif calender.create_data:
         meeting_data = {
             "title": calender.title,
             "description": calender.description,
@@ -155,9 +164,9 @@ def calender_process(text, result):
         }
         response = requests.post(calender_url, params=calender_param, json=meeting_data)
         if response[0] == 200:
-            response = 'Meeting set'
+            response = 'Event has been set'
         else:
-            response = 'Failed to set meeting'
+            response = 'Failed to set event'
     print("calender response:",response)
     return response, {}
 
@@ -210,9 +219,10 @@ def voice_assistant():
         chat_history.clear()
         st.rerun()
 
-try:
-    voice_assistant()
-except Exception as e:
-    print(e)
-    st.rerun()
+# try:
+#     voice_assistant()
+# except Exception as e:
+#     print(e)
+#     st.rerun()
 
+voice_assistant()

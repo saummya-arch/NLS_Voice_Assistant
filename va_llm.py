@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class Calender(BaseModel):
-    intent: Literal['fetch_data', 'update_data']
+    create_data: bool
     start_time: str | None
     end_time: str | None
     title: str | None
@@ -38,6 +38,7 @@ class ExtractorLLM:
                 Provide no output for missing information.
                 For weather location use only proper city name, no arbitrary location.
                 Do not pick dates that have passed when weekday is given, pick next date available date.
+                If calender is the intent, new entries are considered new event and all other events are old.
                 Text:
                 {text}
                 '''
@@ -47,6 +48,34 @@ class ExtractorLLM:
             format=Response.model_json_schema())
         result = Response.model_validate_json(response.message.content)
         return result
+
+
+class ModifyCalender(BaseModel):
+    request: Literal['get', 'put', 'delete']
+    ids: list[int]
+    calender: Calender
+
+
+class ModifyCalenderLLM:
+    def chat(self, request: str, data: dict):
+        response = chat(messages=[
+            {
+                'role': 'user',
+                'content': f'''
+                request type is either get, put or delete API call.
+                Output the id(s) of the data that best fits the answer.
+                Id with the highest value is the latest and the lowest value is the oldest.
+                Request:
+                {request}
+                
+                Data:
+                {data}
+                '''
+            }
+        ],
+            model='ministral-3',
+            format=ModifyCalender.model_json_schema())
+        return ModifyCalender.model_validate_json(response.message.content)
 
 
 class Reply(BaseModel):

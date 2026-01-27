@@ -64,7 +64,7 @@ class ModifyCalenderLLM:
                 'content': f'''
                 request type is either get, put or delete API call.
                 Output the id(s) of the data that best fits the answer.
-                Id with the highest value is the latest and the lowest value is the oldest.
+                Id with the highest value is the last created event.
                 Request:
                 {request}
                 

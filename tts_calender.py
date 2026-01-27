@@ -143,26 +143,36 @@ def calender_process(text, result):
     print(entries)
     response = 'Failed to process calender request, please try again.'
     calender = result.calender
+    response = modify_calender_llm_model.chat(text, entries)
+    print('llm output for calender:', response)
     if not calender.create_data:
-        response = modify_calender_llm_model.chat(text, entries)
-        print('llm output for modification:', response)
         if response:
+            print('in get', ids := response.ids)
             if response.request == 'get':
-                print('in get', ids:= response.ids)
                 for entry in entries:
                     if entry['id'] in ids:
-                        response = f'Event is {entry["title"]} for {entry["description"]}. '
+                        response = f'Event is {entry["title"]} for {entry["description"]}.'
+            elif response.request == 'delete':
+                for entry in entries:
+                    if entry['id'] in ids:
+                        requests.delete(calender_url, params=calender_param, json={'id': entry['id']})
+                        response = 'Event is deleted.'
         else:
             response = 'Failed to process calender request, please try again.'
     elif calender.create_data:
-        meeting_data = {
-            "title": calender.title,
-            "description": calender.description,
-            "start_time": calender.start_time,
-            "end_time": calender.end_time,
-            "location": calender.location,
-        }
-        response = requests.post(calender_url, params=calender_param, json=meeting_data)
+        if response.request == 'put':
+            event_data = response.calender.dict()
+            response = requests.put(calender_url, params=calender_param, json=event_data)
+        else:
+            event_data = {
+                "title": calender.title,
+                "description": calender.description,
+                "start_time": calender.start_time,
+                "end_time": calender.end_time,
+                "location": calender.location,
+            }
+            response = requests.post(calender_url, params=calender_param, json=event_data)
+        print('response for create', response)
         if response[0] == 200:
             response = 'Event has been set'
         else:

@@ -172,7 +172,7 @@ def calender_process(text, result):
         }
         response = requests.post(calender_url, params = {**calender_param, **event_data}).json()
         print('response for create', response)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             response = 'Event has been set'
         else:
             response = 'Failed to set event'

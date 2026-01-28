@@ -26,7 +26,14 @@ class Response(BaseModel):
 
 
 class ExtractorLLM:
-    def chat(self, text: str):
+    def chat(self, text: str, last_city: str, last_calendar_id: str):
+
+        last_respone = 'No previous context'
+        if last_city:
+            last_respone = f"The last mentioned city was {last_city}. If the user says there, use this city."
+        if last_calendar_id:
+            last_respone = f"The last created or modified calender entry was: {last_calendar_id}. If user says 'previous' or 'previously created', use this ID."
+        
         response = chat(messages=[
             {
                 'role': 'user',
@@ -39,6 +46,10 @@ class ExtractorLLM:
                 For weather location use only proper city name, no arbitrary location.
                 Do not pick dates that have passed when weekday is given, pick next date available date.
                 If calender is the intent, new entries are considered new event and all other events are old.
+
+                Content from previous conversation:
+                {last_respone}
+
                 Text:
                 {text}
                 '''
@@ -57,7 +68,12 @@ class ModifyCalender(BaseModel):
 
 
 class ModifyCalenderLLM:
-    def chat(self, request: str, data: dict):
+    def chat(self, request: str, data: dict, last_calendar_id: int = None):
+
+        last_respone = ''
+        if last_calendar_id:
+            last_respone = f"The previously created or modified calender entry ID was: {last_calendar_id}. If request mentions says 'previous' or 'previously created', use this ID."
+        
         response = chat(messages=[
             {
                 'role': 'user',
@@ -65,6 +81,9 @@ class ModifyCalenderLLM:
                 request type is either get, put or delete API call.
                 Output the id(s) of the data that best fits the answer.
                 Id with the highest value is the last created event.
+
+                {last_respone}
+
                 Request:
                 {request}
                 

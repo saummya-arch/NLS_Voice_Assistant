@@ -68,7 +68,7 @@ weather_url = "https://api.responsible-nlp.net/weather.php"
 calender_url = "https://api.responsible-nlp.net/calendar.php"
 
 
-def record_audio(sr=sample_rate, silence_limit=3.0, threshold=0.02, min_duration=3.0):
+def record_audio(sr=sample_rate, silence_limit=5.0, threshold=0.02, min_duration=3.0):
     st.write("Recording...")
     recorded_chunks = []
     silent_chunks = 0
@@ -92,7 +92,6 @@ def record_audio(sr=sample_rate, silence_limit=3.0, threshold=0.02, min_duration
                 silent_chunks += 1
             else:
                 silent_chunks = 0  # not silent
-    print("sr:",sr)
     with sd.InputStream(samplerate=sr, channels=1, callback=callback, blocksize=chunk_size):
         while silent_chunks < limit_in_chunks:
             sd.sleep(100)  # Check status every 100ms
@@ -137,47 +136,68 @@ def weather_process(text, result):
         print(e)
         return 'Error on accesing weather information.'
     
-def calender_process(text, result):
+def calender_process(text, result, chat_history):
     calender_param = {"calenderid": "uid23"}
     entries = requests.get(calender_url, params=calender_param).json()
     print(entries)
-    response = 'Failed to process calender request, please try again.'
+
     calender = result.calender
-    response = modify_calender_llm_model.chat(text, entries)
-    print('llm output for calender:', response)
-    if not calender.create_new_entry:
-        if response:
-            print('in get', ids := response.ids)
-            if response.request == 'get':
-                for entry in entries:
-                    if entry['id'] in ids:
-                        response = f'Event is {entry["title"]} for {entry["description"]}.'
-            elif response.request == 'delete':
-                for entry in entries:
-                    if entry['id'] in ids:
-                        requests.delete(calender_url, params = {**calender_param, 'id': entry['id']})
+    last_calender_id = chat_history.get_last_appointment() #prev reference
+    llm_response = modify_calender_llm_model.chat(text, entries, last_calender_id)
+
+    print('llm output for calender:', llm_response)
+
+    created_entry_id = None
+
+    if llm_response:
+        print('in get', ids := llm_response.ids)
+        if llm_response.request == 'get':
+            for entry in entries:
+                if entry['id'] in ids:
+                    response = f'Event is {entry["title"]} for {entry["description"]}.'
+        elif llm_response.request == 'delete':
+            for entry in entries:
+                if entry['id'] in ids:
+                    del_response = requests.delete(calender_url, params = {**calender_param, 'id': entry['id']})
+                    print("del_response:", del_response)
+                    if del_response.status_code == 200:
                         response = 'Event is deleted.'
-            elif response.request == 'put':
-                event_data = response.calender.model_dump()
-                response = requests.put(calender_url, params={**calender_param, **event_data})
-        else:
-            response = 'Failed to process calender request, please try again.'
-    elif calender.create_new_entry:
-        event_data = {
-            "title": calender.title,
-            "description": calender.description,
-            "start_time": calender.start_time,
-            "end_time": calender.end_time,
-            "location": calender.location,
-        }
-        response = requests.post(calender_url, params = {**calender_param, **event_data}).json()
-        print('response for create', response)
-        if response and response.status_code == 200:
-            response = 'Event has been set'
-        else:
-            response = 'Failed to set event'
+                    else:
+                        response = 'Failed to delete the event'
+        elif llm_response.request == 'put':
+            if ids:
+                event_data = llm_response.calender.model_dump()
+                print("\nevent data:", event_data)
+                put_response = requests.put(calender_url, params={**calender_param, 'id': ids[0]}, json=event_data)
+                print("put_response:", put_response)
+                if put_response.status_code == 200:
+                    response = 'Event has been updated.'
+                    created_entry_id = ids[0]
+                else:
+                    response = 'Failed to process calender request, please try again.'
+        elif llm_response.request == 'post':
+            event_data = {
+                "title": calender.title or llm_response.calender.tile,
+                "description": calender.description or llm_response.calender.description,
+                "start_time": calender.start_time or llm_response.calender.start_time,
+                "end_time": calender.end_time or llm_response.calender.end_time,
+                "location": calender.location or llm_response.calender.location,
+            }
+            print("post event_data:", event_data)
+            # response = requests.post(calender_url, params = {**calender_param, **event_data}).json()
+            post_response = requests.post(calender_url, params=calender_param, json=event_data)
+            print('post_response', post_response)
+            if post_response.status_code == 200:
+                response = 'Event has been set'
+                response_id = post_response.json()
+                created_entry_id = response_id["id"]
+            else:
+                response = 'Failed to set event'
+
+    else:
+        response = 'Failed to process calender request, please try again.'
     print("calender response:",response)
-    return response, {}
+    return response, {'calendar_entry': created_entry_id}
 
 def voice_assistant():
 
@@ -186,8 +206,8 @@ def voice_assistant():
     if chat_history.chats:
         st.subheader("Chat history")
         for chat in chat_history.chats[-4:]:
-            st.text(f"You:{chat.usr_request}")
-            st.text(f"Bot:{chat.chat_response}")
+            st.text(f"👱  : {chat.usr_request}")
+            st.text(f"🤖  : {chat.chat_response}")
             st.divider()
 
     if st.button("Record Audio"):
@@ -200,12 +220,14 @@ def voice_assistant():
         print(text)
         st.text(text)
 
+        last_city = chat_history.get_last_city()
+        last_calender_id = chat_history.get_last_appointment()
         # LLM testing
-        result = extractor_llm_model.chat(text)
+        result = extractor_llm_model.chat(text, last_city, last_calender_id)
         print("LLm response:",result)
-
+        
         if result.intent == 'calender':
-            response, entries = calender_process(text, result)
+            response, entries = calender_process(text, result, chat_history)
         elif result.intent == 'weather':
             response, entries = weather_process(text, result)
 

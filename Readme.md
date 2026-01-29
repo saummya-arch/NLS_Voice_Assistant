@@ -12,5 +12,5 @@ https://github.com/ollama/ollama
 
 # to run in docker use these commands:
 
-docker build -t ms1-distil .
-docker run --rm -p 8000:8000 -e DISTIL_MODEL=distil-whisper/distil-medium.en ms1-distil
+docker compose up -d --build
+docker exec -it ollama ollama pull mistral

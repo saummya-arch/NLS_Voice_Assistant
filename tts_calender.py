@@ -5,6 +5,7 @@ import sounddevice as sd
 import numpy as np
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 import torch
+import librosa
 
 from va_llm import ExtractorLLM, ModifyCalenderLLM, ReplyLLM
 from tts import TTS
@@ -53,6 +54,9 @@ def load_reply_llm():
 
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = ChatHistory()
+
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
 
 # Parameters
 processor, model = load_asr()
@@ -239,10 +243,23 @@ def voice_assistant():
             st.text(f"🤖  : {chat.chat_response}")
             st.divider()
 
+    audio_file = st.file_uploader("Upload audio", type=["mp3"], key=f"uploader_{st.session_state.uploader_key}")
+
     if st.button("Record Audio"):
         start_time = time.time()
-        # record audio
-        audio = record_audio()
+
+        if audio_file:
+            # use file for audio
+            audio_np, _ = librosa.load(
+                audio_file,
+                sr=16_000,
+                mono=True
+            )
+
+            audio = audio_np.astype(np.float32)
+        else:
+            # record audio
+            audio = record_audio()
         with st.spinner("Transcribing!!"):
             text = predict_audio(audio)
 
@@ -272,10 +289,12 @@ def voice_assistant():
         print('Total tts infer time:', time.time() - start_time)
 
         # rerun record
+        st.session_state.uploader_key += 1
         st.rerun()
     
     if st.button("Clear History"):
         chat_history.clear()
+        st.session_state.uploader_key += 1
         st.rerun()
 
 # try:

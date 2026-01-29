@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class Calender(BaseModel):
+    request_type: Literal['get', 'post', 'put', 'delete']
     create_new_entry: bool
     start_time: str | None
     end_time: str | None
@@ -45,7 +46,12 @@ class ExtractorLLM:
                 Provide no output for missing information.
                 For weather location use only proper city name, no arbitrary location.
                 Do not pick dates that have passed when weekday is given, pick next date available date.
-                If calender is the intent, new entries are considered new event and all other events are old.
+                
+                For CALENDAR intent, determine request_type:
+                - "post" = add/create/schedule new appointment
+                - "get" = retrieve/show/find existing appointment
+                - "put" = update/change/modify existing appointment
+                - "delete" = remove/cancel existing appointment
 
                 Content from previous conversation:
                 {last_respone}

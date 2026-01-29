@@ -23,7 +23,7 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 def load_asr():
     model_name = "distil-whisper/distil-medium.en"
     processor = AutoProcessor.from_pretrained(model_name)
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name).to("cpu")
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name).to(device)
     model.eval()
     return processor, model
 
@@ -116,9 +116,8 @@ def weather_process(text, result):
     try:
         response = requests.post(weather_url, data={'place': city}).json()
         print(response)
-        weekday = weather.day if weather.day else datetime.now()
-        dt = datetime.strptime(weekday, "%Y-%m-%d")
-
+        weekday_str = weather.day if weather.day else datetime.now().strftime("%Y-%m-%d")
+        dt = datetime.strptime(weekday_str[:10], "%Y-%m-%d")
         wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
         weekday = wd[dt.weekday()]
         res = next(forecast for forecast in response['forecast'] if forecast['day']==weekday)
@@ -134,8 +133,34 @@ def weather_process(text, result):
     
     except Exception as e:
         print(e)
-        return 'Error on accesing weather information.'
-    
+        return 'Error on accesing weather information.', {}
+
+def format_date(date_str):
+    try:
+        dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+        day = dt.day
+        if 11 <= day <= 13:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+        return f"{day}{suffix} {dt.strftime('%B')}"
+    except:
+        return date_str
+
+def format_entry_details(entry):
+    parts = ["Event"]
+    if entry.get('title'):
+        parts.append(f"with title {entry['title']}")
+    if entry.get('description') and entry.get('description') != 'No description':
+        parts.append(f"description {entry['description']}")
+    if entry.get('start_time'):
+        readable_date = format_date(entry['start_time'])
+        parts.append(f"on {readable_date}")
+    if entry.get('location') and entry.get('location') != 'Not specified':
+        parts.append(f"in {entry['location']}")
+    return ', '.join(parts) if len(parts) > 1 else 'Event'
+
+
 def calender_process(text, result, chat_history):
     calender_param = {"calenderid": "uid23"}
     entries = requests.get(calender_url, params=calender_param).json()
@@ -143,25 +168,46 @@ def calender_process(text, result, chat_history):
 
     calender = result.calender
     last_calender_id = chat_history.get_last_appointment() #prev reference
+    created_entry_id = None
+
+    if calender.request_type == 'post':
+        event_data = {
+            "title": calender.title or 'Untitled',
+            "description": calender.description or 'No description',
+            "start_time": calender.start_time or 'No start time',
+            "end_time": calender.end_time or 'No end time',
+            "location": calender.location or 'No location',
+        }
+        print("post event_data:", event_data)
+        post_response = requests.post(calender_url, params=calender_param, json=event_data)
+        print('post_response', post_response)
+        if post_response.status_code == 200:
+            details = format_entry_details(event_data)
+            response = f'{details} has been created.'
+            response_id = post_response.json()
+            created_entry_id = response_id["id"]
+        else:
+            response = 'Failed to create event'
+        return response, {'calendar_entry': created_entry_id}
+    
     llm_response = modify_calender_llm_model.chat(text, entries, last_calender_id)
 
     print('llm output for calender:', llm_response)
-
-    created_entry_id = None
 
     if llm_response:
         print('in get', ids := llm_response.ids)
         if llm_response.request == 'get':
             for entry in entries:
                 if entry['id'] in ids:
-                    response = f'Event is {entry["title"]} for {entry["description"]}.'
+                    response = format_entry_details(entry)
         elif llm_response.request == 'delete':
             for entry in entries:
                 if entry['id'] in ids:
                     del_response = requests.delete(calender_url, params = {**calender_param, 'id': entry['id']})
                     print("del_response:", del_response)
                     if del_response.status_code == 200:
-                        response = 'Event is deleted.'
+                        details = format_entry_details(entry)
+                        response = f'{details} has been deleted.'
                     else:
                         response = 'Failed to delete the event'
         elif llm_response.request == 'put':
@@ -171,28 +217,11 @@ def calender_process(text, result, chat_history):
                 put_response = requests.put(calender_url, params={**calender_param, 'id': ids[0]}, json=event_data)
                 print("put_response:", put_response)
                 if put_response.status_code == 200:
-                    response = 'Event has been updated.'
+                    details = format_entry_details(event_data)
+                    response = f'{details} has been updated.'
                     created_entry_id = ids[0]
                 else:
                     response = 'Failed to process calender request, please try again.'
-        elif llm_response.request == 'post':
-            event_data = {
-                "title": calender.title or llm_response.calender.tile,
-                "description": calender.description or llm_response.calender.description,
-                "start_time": calender.start_time or llm_response.calender.start_time,
-                "end_time": calender.end_time or llm_response.calender.end_time,
-                "location": calender.location or llm_response.calender.location,
-            }
-            print("post event_data:", event_data)
-            # response = requests.post(calender_url, params = {**calender_param, **event_data}).json()
-            post_response = requests.post(calender_url, params=calender_param, json=event_data)
-            print('post_response', post_response)
-            if post_response.status_code == 200:
-                response = 'Event has been set'
-                response_id = post_response.json()
-                created_entry_id = response_id["id"]
-            else:
-                response = 'Failed to set event'
 
     else:
         response = 'Failed to process calender request, please try again.'
@@ -211,7 +240,7 @@ def voice_assistant():
             st.divider()
 
     if st.button("Record Audio"):
-
+        start_time = time.time()
         # record audio
         audio = record_audio()
         with st.spinner("Transcribing!!"):
@@ -237,7 +266,6 @@ def voice_assistant():
             intent=result.intent,
             entries=entries,
         )
-        start_time = time.time()
 
         # tts the response
         audio = tts_model.speak(response)

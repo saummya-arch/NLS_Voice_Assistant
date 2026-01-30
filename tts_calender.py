@@ -22,8 +22,8 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 # ASR model
 @st.cache_resource
 def load_asr():
-    model_name = "distil-whisper/distil-medium.en"
-    processor = AutoProcessor.from_pretrained(model_name)
+    model_name = "./models/whisper"
+    processor = AutoProcessor.from_pretrained(model_name, local_files_only=True)
     model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name).to(device)
     model.eval()
     return processor, model
@@ -41,10 +41,12 @@ def load_extractor_llm():
     llm_model = ExtractorLLM()
     return llm_model
 
+
 @st.cache_resource
 def load_modify_llm():
     llm_model = ModifyCalenderLLM()
     return llm_model
+
 
 @st.cache_resource
 def load_reply_llm():
@@ -78,7 +80,7 @@ def record_audio(sr=sample_rate, silence_limit=5.0, threshold=0.02, min_duration
     silent_chunks = 0
     total_chunks = 0
 
-    #chunk parameters
+    # chunk parameters
     chunk_size = 1024
     limit_in_chunks = int(silence_limit * sr / chunk_size)
     min_chunks = int(min_duration * sr / chunk_size)
@@ -86,16 +88,17 @@ def record_audio(sr=sample_rate, silence_limit=5.0, threshold=0.02, min_duration
     def callback(indata, frames, time, status):
         nonlocal silent_chunks, total_chunks
         total_chunks += 1
-        
-        volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata)) #RMS calculation-eucli norm
+
+        volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata))  # RMS calculation-eucli norm
         recorded_chunks.append(indata.copy())
-        
-        #check only after min duration
+
+        # check only after min duration
         if total_chunks > min_chunks:
-            if volume_norm < threshold: #chunk is silent
+            if volume_norm < threshold:  # chunk is silent
                 silent_chunks += 1
             else:
                 silent_chunks = 0  # not silent
+
     with sd.InputStream(samplerate=sr, channels=1, callback=callback, blocksize=chunk_size):
         while silent_chunks < limit_in_chunks:
             sd.sleep(100)  # Check status every 100ms
@@ -113,7 +116,7 @@ def predict_audio(audio, sr=sample_rate):
 
 
 def weather_process(text, result):
-    #handle weather
+    # handle weather
     weather = result.weather
     city = weather.city if weather.city else "Marburg"
 
@@ -124,20 +127,21 @@ def weather_process(text, result):
         dt = datetime.strptime(weekday_str[:10], "%Y-%m-%d")
         wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
         weekday = wd[dt.weekday()]
-        res = next(forecast for forecast in response['forecast'] if forecast['day']==weekday)
+        res = next(forecast for forecast in response['forecast'] if forecast['day'] == weekday)
         temp = res['temperature']
         weather_desc = res['weather']
 
         response = reply_llm_model.chat(text, {'city': city, 'temp': temp, 'weather': weather_desc})
-        print("weather response",response)
+        print("weather response", response)
         if response.answer:
             response_fin = response.answer.replace("**", "")
 
         return response_fin, {'city': weather.city}
-    
+
     except Exception as e:
         print(e)
         return 'Error on accesing weather information.', {}
+
 
 def format_date(date_str):
     try:
@@ -150,6 +154,7 @@ def format_date(date_str):
         return f"{day}{suffix} {dt.strftime('%B')}"
     except:
         return date_str
+
 
 def format_entry_details(entry):
     parts = ["Event"]
@@ -171,7 +176,7 @@ def calender_process(text, result, chat_history):
     print(entries)
 
     calender = result.calender
-    last_calender_id = chat_history.get_last_appointment() #prev reference
+    last_calender_id = chat_history.get_last_appointment()  # prev reference
     created_entry_id = None
 
     if calender.request_type == 'post':
@@ -193,7 +198,7 @@ def calender_process(text, result, chat_history):
         else:
             response = 'Failed to create event'
         return response, {'calendar_entry': created_entry_id}
-    
+
     llm_response = modify_calender_llm_model.chat(text, entries, last_calender_id)
 
     print('llm output for calender:', llm_response)
@@ -201,13 +206,14 @@ def calender_process(text, result, chat_history):
     if llm_response:
         print('in get', ids := llm_response.ids)
         if llm_response.request == 'get':
-            for entry in entries:
-                if entry['id'] in ids:
-                    response = format_entry_details(entry)
+            required_entires = [entry for entry in entries if entry['id'] in ids]
+            response = reply_llm_model.chat(text, required_entires, is_calender_event=True)
+            if response.answer:
+                response = response.answer.replace("**", "")
         elif llm_response.request == 'delete':
             for entry in entries:
                 if entry['id'] in ids:
-                    del_response = requests.delete(calender_url, params = {**calender_param, 'id': entry['id']})
+                    del_response = requests.delete(calender_url, params={**calender_param, 'id': entry['id']})
                     print("del_response:", del_response)
                     if del_response.status_code == 200:
                         details = format_entry_details(entry)
@@ -229,11 +235,11 @@ def calender_process(text, result, chat_history):
 
     else:
         response = 'Failed to process calender request, please try again.'
-    print("calender response:",response)
+    print("calender response:", response)
     return response, {'calendar_entry': created_entry_id}
 
-def voice_assistant():
 
+def voice_assistant():
     chat_history = st.session_state.chat_history
 
     if chat_history.chats:
@@ -270,8 +276,8 @@ def voice_assistant():
         last_calender_id = chat_history.get_last_appointment()
         # LLM testing
         result = extractor_llm_model.chat(text, last_city, last_calender_id)
-        print("LLm response:",result)
-        
+        print("LLm response:", result)
+
         if result.intent == 'calender':
             response, entries = calender_process(text, result, chat_history)
         elif result.intent == 'weather':
@@ -291,11 +297,12 @@ def voice_assistant():
         # rerun record
         st.session_state.uploader_key += 1
         st.rerun()
-    
+
     if st.button("Clear History"):
         chat_history.clear()
         st.session_state.uploader_key += 1
         st.rerun()
+
 
 # try:
 #     voice_assistant()

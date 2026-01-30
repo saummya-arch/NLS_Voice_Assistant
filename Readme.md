@@ -1,6 +1,6 @@
-# copy paste this command :
+# Run this for distil whisper setup :
 
-set DISTIL_MODEL=distil-whisper/distil-medium.en
+hf download distil-whisper/distil-medium.en --local-dir ./models/whisper
 
 # Command to run streamlit :
 
@@ -10,7 +10,7 @@ streamlit run .\tts_calender.py
 
 https://github.com/ollama/ollama
 
-# to run in docker use these commands:
+# To run in docker use these commands :
 
 docker compose up -d --build
 docker exec -it ollama ollama pull mistral

@@ -1,13 +1,16 @@
-from kokoro import KPipeline
-import soundfile as sf
+from kokoro import KPipeline, KModel
 import sounddevice as sd
 import torch
 
 
 class TTS:
     def __init__(self):
-        self.pipeline = KPipeline(lang_code='a')
-        self.voice = 'af_heart'
+        self.kmodel = KModel(config=r'.\kokoro_support_files\config.json',
+                             model=r'.\kokoro_support_files\kokoro-v1_0.pth')
+        self.pipeline = KPipeline(lang_code='a', model=self.kmodel)
+        self.voice = torch.load(r".\kokoro_support_files\af_heart.pt",
+                                weights_only=True
+                                )
 
     def __create_generator(self, text):
         return self.pipeline(text, voice=self.voice, speed=1, split_pattern=r'\n+')

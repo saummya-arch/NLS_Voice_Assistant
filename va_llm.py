@@ -108,7 +108,7 @@ class Reply(BaseModel):
 
 
 class ReplyLLM:
-    def chat(self, question: str, keyword):
+    def chat(self, question: str, keyword, is_calender_event:bool = False):
         response = chat(
             messages=[
                 {
@@ -116,13 +116,24 @@ class ReplyLLM:
                     'content': f'''
                      Generate an appropriate clean reply to the given question. 
                      Use the Answer keywords to generate the answer.
+                     Answer should be plain text.
+                     
+                     For CALENDAR events:
+                     - Summarize calendar events in one short plain-text paragraph.
+                     - Prioritize dates and main activities.
+                     - It is fine if some events or details are omitted.
+                     - When days are referenced please check the date information.
+                     
                      Please keep the text clean and DO NOT highlight the keywords in the answer.
+                     Text Length max 30 words.
                      
                      Question
                      {question}
                     
                      Answer Keywords
                      {keyword}
+                     
+                     Is the question for a calendar event: {is_calender_event}
                      '''
                 }
             ],

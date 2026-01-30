@@ -201,9 +201,10 @@ def calender_process(text, result, chat_history):
     if llm_response:
         print('in get', ids := llm_response.ids)
         if llm_response.request == 'get':
-            for entry in entries:
-                if entry['id'] in ids:
-                    response = format_entry_details(entry)
+            required_entires = [entry for entry in entries if entry['id'] in ids]
+            response = reply_llm_model.chat(text, required_entires, is_calender_event=True)
+            if response.answer:
+                response = response.answer.replace("**", "")
         elif llm_response.request == 'delete':
             for entry in entries:
                 if entry['id'] in ids:

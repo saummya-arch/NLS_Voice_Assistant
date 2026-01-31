@@ -189,22 +189,27 @@ def calender_process(text, result, chat_history):
             if response.answer:
                 response = response.answer.replace("**", "")
         elif llm_response.request == 'delete':
-            for entry in entries:
-                if entry['id'] in ids:
-                    del_response = requests.delete(calender_url, params={**calender_param, 'id': entry['id']})
-                    print("del_response:", del_response)
-                    if del_response.status_code == 200:
-                        llm_reply = reply_llm_model.chat(
-                            f"Confirm that the following event was deleted: {text}",
-                            {'operation': 'deleted', 'event': entry},is_calender_event=True)
-                        if llm_reply.answer:
-                            response = llm_reply.answer.replace("**", "") 
+            if not ids:
+                response = 'No matching appointment found to delete.'
+            else:
+                for entry in entries:
+                    if entry['id'] in ids:
+                        del_response = requests.delete(calender_url, params={**calender_param, 'id': entry['id']})
+                        print("del_response:", del_response)
+                        if del_response.status_code == 200:
+                            llm_reply = reply_llm_model.chat(
+                                f"Confirm that the following event was deleted: {text}",
+                                {'operation': 'deleted', 'event': entry},is_calender_event=True)
+                            if llm_reply.answer:
+                                response = llm_reply.answer.replace("**", "") 
+                            else:
+                                response = f'Event {entry.get("title", "")} has been deleted.'
                         else:
-                            response = f'Event {entry.get("title", "")} has been deleted.'
-                    else:
-                        response = 'Failed to delete the event'
+                            response = 'Failed to delete the event'
         elif llm_response.request == 'put':
-            if ids:
+            if not ids:
+                response = 'No matching appointment found to update.'
+            else:
                 event_data = llm_response.calender.model_dump()
                 print("\nevent data:", event_data)
                 put_response = requests.put(calender_url, params={**calender_param, 'id': ids[0]}, json=event_data)

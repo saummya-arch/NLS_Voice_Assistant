@@ -21,7 +21,7 @@ class Weather(BaseModel):
 
 
 class Response(BaseModel):
-    intent: Literal['weather', 'calender', None]
+    intent: Literal['weather', 'calendar', 'Other']
     calender: Calender
     weather: Weather
 
@@ -39,7 +39,7 @@ class ExtractorLLM:
             {
                 'role': 'user',
                 'content': f'''
-                Determine whether request is calender or weather intent.
+                Determine whether request is calendar, weather or Other intent.
                 Extract the relevant calender or weather information from the given text.
                 Dates and Time use yyyy-mm-ddThh:mm.
                 If only Dates are given use yyyy-mm-dd.
@@ -123,6 +123,7 @@ class ReplyLLM:
                      - Prioritize dates and main activities.
                      - It is fine if some events or details are omitted.
                      - When days are referenced please check the date information.
+                     - Ignore 'id' key in Answer Keywords.
                      
                      Please keep the text clean and DO NOT highlight the keywords in the answer.
                      Text Length max 30 words.

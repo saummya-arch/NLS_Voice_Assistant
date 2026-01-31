@@ -150,6 +150,7 @@ def calender_process(text, result, chat_history):
 
     calender = result.calender
     last_calender_id = chat_history.get_last_appointment()  # prev reference
+    response = "Failed to process calender request, please try again."
     created_entry_id = None
 
     if calender.request_type == 'post':
@@ -229,6 +230,8 @@ def calender_process(text, result, chat_history):
     else:
         response = 'Failed to process calender request, please try again.'
     print("calender response:", response)
+    if not isinstance(response, str):
+        response = "Failed to process calender request, please try again."
     return response, {'calendar_entry': created_entry_id}
 
 
@@ -242,7 +245,7 @@ def voice_assistant():
             st.text(f"🤖  : {chat.chat_response}")
             st.divider()
 
-    audio_file = st.file_uploader("Upload audio", type=["mp3"], key=f"uploader_{st.session_state.uploader_key}")
+    audio_file = st.file_uploader("Upload audio", type=["mp3", "wav"], key=f"uploader_{st.session_state.uploader_key}")
 
     if st.button("Record Audio"):
         start_time = time.time()
@@ -271,7 +274,9 @@ def voice_assistant():
         result = extractor_llm_model.chat(text, last_city, last_calender_id)
         print("LLm response:", result)
 
-        if result.intent == 'calender':
+        response = "This was neither calendar nor weather request."
+        entries = []
+        if result.intent == 'calendar':
             response, entries = calender_process(text, result, chat_history)
         elif result.intent == 'weather':
             response, entries = weather_process(text, result)
@@ -284,7 +289,7 @@ def voice_assistant():
         )
 
         # tts the response
-        audio = tts_model.speak(response)
+        tts_model.speak(response)
         print('Total tts infer time:', time.time() - start_time)
 
         # rerun record

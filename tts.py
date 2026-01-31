@@ -26,7 +26,7 @@ class TTS:
                     audio = audio.numpy()
                     sd.play(audio, samplerate=24000, blocking=True)
             # return {'status': status.HTTP_200_OK}
-            return audio
+            # return audio
         except Exception as e:
             print(e)
             # return {'status': status.HTTP_400_BAD_REQUEST}

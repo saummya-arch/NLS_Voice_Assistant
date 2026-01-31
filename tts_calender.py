@@ -143,33 +143,6 @@ def weather_process(text, result):
         return 'Error on accesing weather information.', {}
 
 
-def format_date(date_str):
-    try:
-        dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
-        day = dt.day
-        if 11 <= day <= 13:
-            suffix = 'th'
-        else:
-            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-        return f"{day}{suffix} {dt.strftime('%B')}"
-    except:
-        return date_str
-
-
-def format_entry_details(entry):
-    parts = ["Event"]
-    if entry.get('title'):
-        parts.append(f"with title {entry['title']}")
-    if entry.get('description') and entry.get('description') != 'No description':
-        parts.append(f"description {entry['description']}")
-    if entry.get('start_time'):
-        readable_date = format_date(entry['start_time'])
-        parts.append(f"on {readable_date}")
-    if entry.get('location') and entry.get('location') != 'Not specified':
-        parts.append(f"in {entry['location']}")
-    return ', '.join(parts) if len(parts) > 1 else 'Event'
-
-
 def calender_process(text, result, chat_history):
     calender_param = {"calenderid": "uid23"}
     entries = requests.get(calender_url, params=calender_param).json()
@@ -191,10 +164,15 @@ def calender_process(text, result, chat_history):
         post_response = requests.post(calender_url, params=calender_param, json=event_data)
         print('post_response', post_response)
         if post_response.status_code == 200:
-            details = format_entry_details(event_data)
-            response = f'{details} has been created.'
             response_id = post_response.json()
             created_entry_id = response_id["id"]
+            llm_reply = reply_llm_model.chat(
+                f"Confirm that the following event was created: {text}",
+                {'operation': 'created', 'event': event_data},is_calender_event=True)
+            if llm_reply.answer:
+                response = llm_reply.answer.replace("**", "")  
+            else: 
+                response = f'Event {event_data.get("title", "")} has been created.'
         else:
             response = 'Failed to create event'
         return response, {'calendar_entry': created_entry_id}
@@ -216,8 +194,13 @@ def calender_process(text, result, chat_history):
                     del_response = requests.delete(calender_url, params={**calender_param, 'id': entry['id']})
                     print("del_response:", del_response)
                     if del_response.status_code == 200:
-                        details = format_entry_details(entry)
-                        response = f'{details} has been deleted.'
+                        llm_reply = reply_llm_model.chat(
+                            f"Confirm that the following event was deleted: {text}",
+                            {'operation': 'deleted', 'event': entry},is_calender_event=True)
+                        if llm_reply.answer:
+                            response = llm_reply.answer.replace("**", "") 
+                        else:
+                            response = f'Event {entry.get("title", "")} has been deleted.'
                     else:
                         response = 'Failed to delete the event'
         elif llm_response.request == 'put':
@@ -227,9 +210,14 @@ def calender_process(text, result, chat_history):
                 put_response = requests.put(calender_url, params={**calender_param, 'id': ids[0]}, json=event_data)
                 print("put_response:", put_response)
                 if put_response.status_code == 200:
-                    details = format_entry_details(event_data)
-                    response = f'{details} has been updated.'
                     created_entry_id = ids[0]
+                    llm_reply = reply_llm_model.chat(
+                        f"Confirm that the following event was updated: {text}",
+                        {'operation': 'updated', 'event': event_data},is_calender_event=True)
+                    if llm_reply.answer:
+                        response = llm_reply.answer.replace("**", "") 
+                    else:
+                        response = f'Event {event_data.get("title", "")} has been updated.'
                 else:
                     response = 'Failed to process calender request, please try again.'
 

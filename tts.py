@@ -1,14 +1,19 @@
+from pathlib import Path
 from kokoro import KPipeline, KModel
 import sounddevice as sd
 import torch
 
+BASE_DIR = Path(__file__).resolve().parent
+KOKORO_CONFIG = BASE_DIR / "kokoro_support_files" / "config.json"
+KOKORO_PTH = BASE_DIR / "kokoro_support_files" / "kokoro-v1_0.pth"
+KOKORO_VOICE = BASE_DIR / "kokoro_support_files" / "af_heart.pt"
 
 class TTS:
     def __init__(self):
-        self.kmodel = KModel(config=r'.\kokoro_support_files\config.json',
-                             model=r'.\kokoro_support_files\kokoro-v1_0.pth')
+        self.kmodel = KModel(config=KOKORO_CONFIG,
+                             model=KOKORO_PTH)
         self.pipeline = KPipeline(lang_code='a', model=self.kmodel)
-        self.voice = torch.load(r".\kokoro_support_files\af_heart.pt",
+        self.voice = torch.load(KOKORO_VOICE,
                                 weights_only=True
                                 )
 

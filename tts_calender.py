@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 import sounddevice as sd
@@ -15,14 +16,17 @@ import time
 
 from chat_history import ChatHistory
 
-st.title("Voice Assistant(Testing)")
+
+BASE_DIR = Path(__file__).resolve().parent
+
+st.title("Voice Assistant")
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 # ASR model
 @st.cache_resource
 def load_asr():
-    model_name = "./models/whisper"
+    model_name = BASE_DIR / "models" / "whisper"
     processor = AutoProcessor.from_pretrained(model_name, local_files_only=True)
     model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name).to(device)
     model.eval()

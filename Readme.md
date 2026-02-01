@@ -13,4 +13,4 @@ https://github.com/ollama/ollama
 # To run in docker use these commands :
 
 docker compose up -d --build
-docker exec -it ollama ollama pull mistral
+docker exec -it ollama ollama pull ministral-3
